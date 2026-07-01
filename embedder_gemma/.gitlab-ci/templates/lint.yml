@@ -1,0 +1,10 @@
+.lint:
+  stage: lint
+  image: python:3.11.5-slim
+  before_script:
+    - pip install uv
+  script:
+    - uvx ruff check --config pyproject.toml .
+  only:
+    refs:
+      - merge_requests

@@ -1,0 +1,15 @@
+include:
+  - local: '.gitlab-ci/templates/lint.yml'
+  - local: '.gitlab-ci/templates/build.yml'
+
+default:
+  tags:
+    - kub
+
+
+stages:
+  - lint
+  - build
+
+ruff-lint:
+  extends: .lint

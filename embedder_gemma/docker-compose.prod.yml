@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  embedder:
+    restart: unless-stopped
+    image: registry.is74.ru/ml-rnd/services/nlp/rag-embedder-gemma/embedder:${BACKEND_VERSION:-latest}
+    env_file:
+    - .env
+    ports:
+    - "${APP_PORT}:8080"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "10"

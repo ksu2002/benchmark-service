@@ -1,0 +1,115 @@
+# Ускорение `docker compose build` при медленном PyPI: в .env задать
+# PIP_INDEX_URL=https://mirror.yandex.ru/mirrors/pypi/simple
+x-build-pip: &build_pip
+  context: .
+  args:
+    PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+
+x-queue-env: &queue_env
+  # Имена хостов = имена сервисов в этом compose (postgres-dev, minio-dev, rabbitmq-dev)
+  BENCHMARK_POSTGRES_DSN: postgresql://benchmark:benchmark@postgres-dev:5432/benchmark
+  MINIO_ENDPOINT: minio-dev:9000
+  MINIO_ACCESS_KEY: minioadmin
+  MINIO_SECRET_KEY: minioadmin
+  MINIO_BUCKET: benchmarks
+  MINIO_USE_SSL: "false"
+  RABBITMQ_URL: amqp://guest:guest@rabbitmq-dev:5672/
+  RABBITMQ_QUEUE: benchmark.run
+
+x-litellm-env: &litellm_env
+  LITELLM_API_KEY: ${LITELLM_API_KEY:-}
+  LITELLM_API_BASE: ${LITELLM_API_BASE:-}
+  LITELLM_MODEL_NAME: ${LITELLM_MODEL_NAME:-openai/gpt-4o-mini}
+
+# Переменные с хоста (файл .env в корне проекта подхватывается compose для подстановки ${...})
+x-app-env: &app_env
+  <<: [*queue_env, *litellm_env]
+  CLICKHOUSE_HOST: ${CLICKHOUSE_HOST:-}
+  CLICKHOUSE_PORT: ${CLICKHOUSE_PORT:-}
+  CLICKHOUSE_USERNAME: ${CLICKHOUSE_USERNAME:-}
+  CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
+  POOL_SIZE: ${POOL_SIZE:-}
+
+x-worker-base: &worker_base
+  build: *build_pip
+  command: ["python", "-m", "benchmarking.worker"]
+  environment:
+    <<: *app_env
+    PYTHONPATH: /app/src
+  depends_on:
+    postgres-dev:
+      condition: service_healthy
+    minio-dev:
+      condition: service_started
+    rabbitmq-dev:
+      condition: service_healthy
+  restart: on-failure
+
+services:
+  postgres-dev:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: benchmark
+      POSTGRES_PASSWORD: benchmark
+      POSTGRES_DB: benchmark
+    ports:
+      - "5434:5432"
+    volumes:
+      - benchmark_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U benchmark -d benchmark"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  minio-dev:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9004:9000"
+      - "9005:9001"
+    volumes:
+      - benchmark_minio:/data
+
+  rabbitmq-dev:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5674:5672"
+      - "15674:15672"
+    volumes:
+      - ./config/rabbitmq/advanced.config:/etc/rabbitmq/advanced.config:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  streamlit-dev:
+    build: *build_pip
+    command: ["streamlit", "run", "/app/src/home.py"]
+    ports:
+      - "8504:8502"
+    environment:
+      <<: *app_env
+      PYTHONPATH: /app/src
+      STREAMLIT_SERVER_MAX_UPLOAD_SIZE: "1024"
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+      minio-dev:
+        condition: service_started
+      rabbitmq-dev:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker-dev-1:
+    <<: *worker_base
+
+volumes:
+  benchmark_pg:
+  benchmark_minio:

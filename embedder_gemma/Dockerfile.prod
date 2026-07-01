@@ -1,0 +1,19 @@
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+
+ENV USER user_ml
+RUN adduser $USER
+USER $USER
+
+WORKDIR /app
+
+COPY --chown=user_ml:user_ml --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+COPY --chown=user_ml:user_ml pyproject.toml uv.lock ./
+
+RUN uv sync --no-dev
+
+COPY --chown=user_ml:user_ml ./src/ ./
+
+ENV PYTHONPATH="/app/src:${PYTHONPATH}"
+
+CMD ["uv", "run", "--no-sync", "python", "rag_embedder/main.py"]

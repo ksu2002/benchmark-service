@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+    embedder:
+        restart: unless-stopped
+        build:
+            context: ./
+            dockerfile: Dockerfile.prod
+        env_file:
+        - .env
+        ports:
+        - "${APP_PORT}:8080"
+        volumes:
+        - ./src:/app/src
+        - ./pyproject.toml:/app/pyproject.toml:ro

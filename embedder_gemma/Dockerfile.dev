@@ -1,0 +1,18 @@
+FROM python:3.11.6-slim
+
+ENV USER user_ml
+RUN adduser $USER
+
+WORKDIR /app
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+COPY pyproject.toml uv.lock ./
+
+RUN uv sync --no-dev --locked
+
+ENV PYTHONPATH="/app/src:${PYTHONPATH}"
+
+USER $USER
+
+CMD ["uv", "run", "--no-sync", "python", "src/rag_embedder/main.py"]
